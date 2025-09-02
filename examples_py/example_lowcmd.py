@@ -25,16 +25,31 @@ arm = unitree_arm_interface.ArmInterface(hasGripper=True)
 armModel = arm._ctrlComp.armModel
 arm.setFsmLowcmd()
 
-duration = len(t_interp)
+catching_steps = len(t_interp)
 q_init = q_interp[:,0]
 q_end = q_interp[:,-1]
 
-warm_up_time = 5
-start_time = time.time()
+warm_up_steps = 1000
+lastPos = arm.lowstate.getQ()
+targetPos = q_init #forward
 
-while time.time() - start_time < warm_up_time:
-    arm.q = q_interp[:,0]
-    arm.qd = q_dot_interp[:,0]
+for i in range(0, warm_up_steps):
+    arm.q = lastPos*(1-i/warm_up_steps) + targetPos*(i/warm_up_steps)# set position
+    arm.qd = (targetPos-lastPos)/(warm_up_steps*0.002) # set velocity
+    arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
+    arm.gripperQ = 0
+
+    arm.setArmCmd(arm.q, arm.qd, arm.tau)
+    arm.setGripperCmd(arm.gripperQ, arm.gripperQd, arm.gripperTau)
+    arm.sendRecv()# udp connection
+    # print(arm.lowstate.getQ())
+    time.sleep(arm._ctrlComp.dt)
+
+start_time = time.time()
+holding_time = 2
+while time.time() - start_time < holding_time:
+    arm.q = q_init
+    arm.qd = np.array([0,0,0,0,0,0])
     arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
     arm.gripperQ = 0
 
@@ -44,10 +59,14 @@ while time.time() - start_time < warm_up_time:
     # print(arm.lowstate.getQ())
     time.sleep(dt)
 
-for i in range(0, duration):
+for i in range(0, catching_steps):
     arm.q = q_interp[:,i]
     arm.qd = q_dot_interp[:,i]
-    arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
+    # arm.tau = tau_interp[:,i]
+    # arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
+    tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
+    arm.tau = np.clip(tau, -30, 30)
+    print(arm.tau)
     arm.gripperQ = 0
 
     arm.setArmCmd(arm.q, arm.qd, arm.tau)
@@ -59,7 +78,7 @@ for i in range(0, duration):
 finish_time = time.time()
 holding_time = 5
 while time.time() - finish_time < holding_time:
-    arm.q = q_interp[:,-1]
+    arm.q = q_end
     arm.qd = np.array([0,0,0,0,0,0])
     arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
     arm.gripperQ = 0
