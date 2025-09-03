@@ -59,21 +59,32 @@ while time.time() - start_time < holding_time:
     # print(arm.lowstate.getQ())
     time.sleep(dt)
 
+kp = np.array([20, 30, 30, 20, 15, 10])
+kd = np.array([2000, 2000, 2000, 2000, 2000, 2000])
+catching_start_time = time.time()
 for i in range(0, catching_steps):
+    step_start_time = time.time()
     arm.q = q_interp[:,i]
     arm.qd = q_dot_interp[:,i]
     # arm.tau = tau_interp[:,i]
     # arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
     tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
     arm.tau = np.clip(tau, -30, 30)
-    print(arm.tau)
+    q = arm.lowstate.getQ()
+    qd = arm.lowstate.getQd()
+    tau_eff = 25.6 * kp @ (arm.q-q) + 0.0128 * kd @ (arm.qd-qd) + arm.tau
+    print(arm.tau, arm.lowstate.getTau())
     arm.gripperQ = 0
 
     arm.setArmCmd(arm.q, arm.qd, arm.tau)
     arm.setGripperCmd(arm.gripperQ, arm.gripperQd, arm.gripperTau)
     arm.sendRecv()# udp connection
     # print(arm.lowstate.getQ())
-    time.sleep(dt)
+    time_until_next_step = dt - (time.time()-step_start_time)
+    if time_until_next_step > 0:
+        time.sleep(time_until_next_step)
+print(time.time()-catching_start_time)
+print(t_interp[-1])
 
 finish_time = time.time()
 holding_time = 5
