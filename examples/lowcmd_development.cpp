@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
         arm.gripperQ = 0;
 
         currentTau = arm.lowstate->getTau();
-        std::cout << currentTau.transpose() << "and\n";
+        std::cout << currentTau.transpose() << "and\t"<< arm.tau.transpose()<< "\n";
         
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
