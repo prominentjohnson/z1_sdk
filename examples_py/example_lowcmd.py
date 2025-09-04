@@ -20,6 +20,8 @@ def load_desired_trajectory(filename):
 t_interp, q_interp, q_dot_interp, tau_interp = load_desired_trajectory("nominal_trajectory")
 dt = t_interp[1]-t_interp[0]
 
+# print(tau_interp.T)
+
 np.set_printoptions(precision=3, suppress=True)
 arm = unitree_arm_interface.ArmInterface(hasGripper=True)
 armModel = arm._ctrlComp.armModel
@@ -67,20 +69,20 @@ for i in range(0, catching_steps):
     arm.q = q_interp[:,i]
     arm.qd = q_dot_interp[:,i]
     # arm.tau = tau_interp[:,i]
-    # arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
-    tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
-    arm.tau = np.clip(tau, -30, 30)
+    arm.tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
+    # tau = armModel.inverseDynamics(arm.q, arm.qd, np.zeros(6), np.zeros(6)) # set torque
+    # arm.tau = np.clip(tau, -30, 30)
     q = arm.lowstate.getQ()
     qd = arm.lowstate.getQd()
-    tau_eff = 25.6 * kp @ (arm.q-q) + 0.0128 * kd @ (arm.qd-qd) + arm.tau
-    print(arm.tau, arm.lowstate.getTau())
+    tau_eff = 25.6 * kp * (arm.q-q) + 0.0128 * kd * (arm.qd-qd) + arm.tau
+    print(tau_eff, arm.lowstate.getTau())
     arm.gripperQ = 0
 
     arm.setArmCmd(arm.q, arm.qd, arm.tau)
     arm.setGripperCmd(arm.gripperQ, arm.gripperQd, arm.gripperTau)
     arm.sendRecv()# udp connection
     # print(arm.lowstate.getQ())
-    time_until_next_step = dt - (time.time()-step_start_time)
+    time_until_next_step = 10 * dt - (time.time()-step_start_time)
     if time_until_next_step > 0:
         time.sleep(time_until_next_step)
 print(time.time()-catching_start_time)
