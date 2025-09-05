@@ -1,8 +1,18 @@
 #include "unitree_arm_sdk/control/unitreeArm.h"
 #include <fstream>
 #include <chrono>
+#include <algorithm>
 
 using namespace UNITREE_ARM;
+
+Vec6 clampVec6(const Vec6& v, double low, double high)
+{
+    Vec6 result;
+    for (int i = 0; i < 6; i++) {
+        result[i] = std::max(low, std::min(v[i], high));
+    }
+    return result;
+}
 
 int main(int argc, char *argv[]) {
     using clock = std::chrono::steady_clock;
@@ -60,11 +70,8 @@ int main(int argc, char *argv[]) {
     // KP = arm._ctrlComp->lowcmd->kp;
     // KW = arm._ctrlComp->lowcmd->kd;
 
-    // std::vector<double> KP = {20, 30, 30, 20, 15, 10};
-    // std::vector<double> KW = {2000, 2000, 2000, 2000, 2000, 2000};
-
-    std::vector<double> KP = {0, 0, 0, 0, 0, 0};
-    std::vector<double> KW = {0, 0, 0, 0, 0, 0};
+    std::vector<double> KP = {20, 30, 30, 20, 15, 10};
+    std::vector<double> KW = {2000, 2000, 2000, 2000, 2000, 2000};
     arm._ctrlComp->lowcmd->setControlGain(KP, KW);    
     Eigen::Map<const Vec6> KP_Eigen(KP.data());
     Eigen::Map<const Vec6> KW_Eigen(KW.data());
@@ -73,15 +80,18 @@ int main(int argc, char *argv[]) {
 
     Vec6 initQ = arm.lowstate->getQ();
 
-    double duration = 400;
+    double duration = 300;
     Vec6 targetQ;
     targetQ << q_init;
+    Vec6 outputTau;
     Timer timer(dt);
     for(int i(0); i<duration; i++){
         arm.q = initQ * (1-i/duration) + targetQ * (i/duration);
         arm.qd = (targetQ - initQ) / (duration * arm._ctrlComp->dt);
-        arm.tau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        outputTau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        arm.tau = clampVec6(outputTau, -30.0, 30.0);
         arm.gripperQ = 0;
+        std::cout << arm.tau.transpose() << "\n";
         
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
@@ -94,8 +104,10 @@ int main(int argc, char *argv[]) {
     while (std::chrono::duration<double>(clock::now() - start_time).count() < warmup_time) {
         arm.q << q_init;
         arm.qd << 0,0,0,0,0,0;
-        arm.tau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        outputTau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        arm.tau = clampVec6(outputTau, -30.0, 30.0);
         arm.gripperQ = 0;
+        std::cout << arm.tau.transpose()<<"\n";
         
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
@@ -106,15 +118,32 @@ int main(int argc, char *argv[]) {
     int catching_steps = t_interp.size();
     Vec6 currentQ;
     Vec6 currentQd;
+    Vec6 desiredQ;
+    Vec6 desiredQd;
+    Vec6 feedforwardTau;
     Vec6 currentTau;
+    std::vector<double> kp = {750, 750, 750, 750, 750, 750};
+    std::vector<double> kd = {20, 20, 20, 20, 20, 20};
+    Eigen::Map<const Vec6> kp_Eigen(kp.data());
+    Eigen::Map<const Vec6> kd_Eigen(kd.data());
+    KP = {0, 0, 0, 0, 0, 0};
+    KW = {0, 0, 0, 0, 0, 0};
+    arm._ctrlComp->lowcmd->setControlGain(KP, KW);
     for(int i(0); i<catching_steps; i++){
-        arm.q << q_interp.col(i);
-        arm.qd << q_dot_interp.col(i);
-        arm.tau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        desiredQ << q_interp.col(i);
+        desiredQd << 0,0,0,0,0,0;//q_dot_interp.col(i);
+        feedforwardTau << 0,0,0,0,0,0;//tau_interp.col(i);
+        currentQ = arm.lowstate->getQ();
+        currentQd = arm.lowstate->getQd();
+        outputTau = kp_Eigen.array() * (desiredQ - currentQ).array() + kd_Eigen.array()* (desiredQd - currentQd).array() + feedforwardTau.array();
+        arm.tau = clampVec6(outputTau, -30.0, 30.0);
         arm.gripperQ = 0;
 
         currentTau = arm.lowstate->getTau();
-        std::cout << currentTau.transpose() << "and\t"<< arm.tau.transpose()<< "\n";
+        std::cout << arm.tau.transpose()<<"\n";
+        // std::cout << currentTau.transpose() << "and\t"<< arm.tau.transpose()<< "\n";
+        // std::cout << currentTau.transpose() << "taucmd:\n"<< arm.tau.transpose()<< "\n";
+        std::cout << desiredQ.transpose()<<"\n" << currentQ.transpose() << "difference:"<< (desiredQ-currentQ).transpose() <<"\n";
         
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
@@ -149,13 +178,18 @@ int main(int argc, char *argv[]) {
     //     timer.sleep();
     // }
 
+    KP = {20, 30, 30, 20, 15, 10};
+    KW = {2000, 2000, 2000, 2000, 2000, 2000};
+    arm._ctrlComp->lowcmd->setControlGain(KP, KW);
     double holding_time = 2.0;  // seconds
     auto finish_time = clock::now();
     while (std::chrono::duration<double>(clock::now() - finish_time).count() < holding_time) {
         arm.q << q_end;
         arm.qd << 0,0,0,0,0,0;
-        arm.tau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        outputTau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        arm.tau = clampVec6(outputTau, -30.0, 30.0);
         arm.gripperQ = 0;
+        std::cout << arm.tau.transpose()<<"\n";
         
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
