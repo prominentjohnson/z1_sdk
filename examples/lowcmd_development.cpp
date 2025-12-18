@@ -2,6 +2,9 @@
 #include <fstream>
 #include <chrono>
 #include <algorithm>
+#include <fcntl.h>
+#include <unistd.h>
+#include <iostream>
 
 using namespace UNITREE_ARM;
 
@@ -15,8 +18,10 @@ Vec6 clampVec6(const Vec6& v, double low, double high)
 }
 
 int main(int argc, char *argv[]) {
+    int fd = open("/tmp/run_barrier", O_RDONLY | O_NONBLOCK); //open a temporary file for busy waiting
+
     using clock = std::chrono::steady_clock;
-    std::ifstream file("../examples/robust_nominal_trajectory.csv");
+    std::ifstream file("../examples/nominal_trajectory.csv");
     if (!file.is_open()) {
         std::cerr << "Error opening file\n";
         return 1;
@@ -105,7 +110,8 @@ int main(int argc, char *argv[]) {
 
     double warmup_time = 2.0;  // seconds
     auto start_time = clock::now();
-    while (std::chrono::duration<double>(clock::now() - start_time).count() < warmup_time) {
+    while (true) //std::chrono::duration<double>(clock::now() - start_time).count() < warmup_time
+    {
         arm.q << q_init;
         arm.qd << 0,0,0,0,0,0;
         outputTau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
@@ -116,6 +122,14 @@ int main(int argc, char *argv[]) {
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
         arm.sendRecv();
+
+        char buf;
+        // try to read, if no data, read will immediately return -1
+        if (read(fd, &buf, 1) > 0) {
+            std::cout << "Signal received, continue!" << std::endl;
+            break;
+        }
+
         timer.sleep();
     }
 
@@ -123,6 +137,7 @@ int main(int argc, char *argv[]) {
     Vec6 currentQ;
     Vec6 currentQd;
     Vec6 currentTau;
+    // wait_for_go();
     for(int i(0); i<catching_steps; i++){
         arm.q = q_interp.col(i);
         arm.qd = q_dot_interp.col(i);
@@ -146,7 +161,8 @@ int main(int argc, char *argv[]) {
 
     double holding_time = 2.0;  // seconds
     auto finish_time = clock::now();
-    while (std::chrono::duration<double>(clock::now() - finish_time).count() < holding_time) {
+    while (std::chrono::duration<double>(clock::now() - finish_time).count() < holding_time) 
+    {
         arm.q << q_end;
         arm.qd << 0,0,0,0,0,0;
         outputTau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
@@ -157,6 +173,14 @@ int main(int argc, char *argv[]) {
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
         arm.sendRecv();
+
+        char buf;
+        // try to read, if no data, read will immediately return -1
+        if (read(fd, &buf, 1) > 0) {
+            std::cout << "Signal received, continue!" << std::endl;
+            break;
+        }
+
         timer.sleep();
     }
 
@@ -166,5 +190,7 @@ int main(int argc, char *argv[]) {
     arm.backToStart();
     arm.setFsm(ArmFSMState::PASSIVE);
     arm.sendRecvThread->shutdown();
+
+    close(fd);
     return 0;
 }
