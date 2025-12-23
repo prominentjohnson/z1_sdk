@@ -108,8 +108,6 @@ int main(int argc, char *argv[]) {
         timer_init.sleep();
     }
 
-    double warmup_time = 2.0;  // seconds
-    auto start_time = clock::now();
     while (true) //std::chrono::duration<double>(clock::now() - start_time).count() < warmup_time
     {
         arm.q << q_init;
@@ -129,6 +127,24 @@ int main(int argc, char *argv[]) {
             std::cout << "Signal received, continue!" << std::endl;
             break;
         }
+
+        timer.sleep();
+    }
+
+    double time_delay = 0.6;  // seconds
+    auto start_time = clock::now();
+    while (std::chrono::duration<double>(clock::now() - start_time).count() < time_delay) //
+    {
+        arm.q << q_init;
+        arm.qd << 0,0,0,0,0,0;
+        outputTau = arm._ctrlComp->armModel->inverseDynamics(arm.q, arm.qd, Vec6::Zero(), Vec6::Zero());
+        arm.tau = clampVec6(outputTau, -tau_limit, tau_limit);
+        arm.gripperQ = 0;
+        // std::cout << arm.tau.transpose()<<"\n";
+        
+        arm.setArmCmd(arm.q, arm.qd, arm.tau);
+        arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
+        arm.sendRecv();
 
         timer.sleep();
     }
