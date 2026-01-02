@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
     int fd = open("/tmp/run_barrier", O_RDONLY | O_NONBLOCK); //open a temporary file for busy waiting
 
     using clock = std::chrono::steady_clock;
-    std::ifstream file("../examples/nominal_trajectory.csv");
+    std::ifstream file("../examples/robust_nominal_trajectory.csv");
     if (!file.is_open()) {
         std::cerr << "Error opening file\n";
         return 1;
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
         timer.sleep();
     }
 
-    double time_delay = 0.6;  // seconds
+    double time_delay = 0.54;  // 0.56seconds
     auto start_time = clock::now();
     while (std::chrono::duration<double>(clock::now() - start_time).count() < time_delay) //
     {
@@ -175,7 +175,7 @@ int main(int argc, char *argv[]) {
         timer.sleep();
     }
 
-    double holding_time = 2.0;  // seconds
+    double holding_time = 10.0;  // seconds
     auto finish_time = clock::now();
     while (std::chrono::duration<double>(clock::now() - finish_time).count() < holding_time) 
     {
@@ -189,13 +189,6 @@ int main(int argc, char *argv[]) {
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
         arm.sendRecv();
-
-        char buf;
-        // try to read, if no data, read will immediately return -1
-        if (read(fd, &buf, 1) > 0) {
-            std::cout << "Signal received, continue!" << std::endl;
-            break;
-        }
 
         timer.sleep();
     }
