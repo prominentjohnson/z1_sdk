@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
     int fd = open("/tmp/run_barrier", O_RDONLY | O_NONBLOCK); //open a temporary file for busy waiting
 
     using clock = std::chrono::steady_clock;
-    std::ifstream file("../examples/robust_nominal_trajectory.csv");
+    std::ifstream file("../examples/nominal_trajectory.csv");
     if (!file.is_open()) {
         std::cerr << "Error opening file\n";
         return 1;
@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
         timer.sleep();
     }
 
-    double time_delay = 0.54;  // 0.56seconds
+    double time_delay = 0.121;  // 0.12 seconds for robust nominal trajectory, 0.125 seconds for robust nominal trajectory
     auto start_time = clock::now();
     while (std::chrono::duration<double>(clock::now() - start_time).count() < time_delay) //
     {
@@ -149,6 +149,9 @@ int main(int argc, char *argv[]) {
         timer.sleep();
     }
 
+    auto actual_delay = std::chrono::duration<double>(clock::now() - start_time);
+    std::cout << "Actual time delay: " << actual_delay.count()<<"\n";
+
     int catching_steps = t_interp.size();
     Vec6 currentQ;
     Vec6 currentQd;
@@ -164,10 +167,10 @@ int main(int argc, char *argv[]) {
         arm.gripperQ = 0;
 
         currentTau = arm.lowstate->getTau();
-        std::cout << arm.tau.transpose()<<"\n";
+        // std::cout << arm.tau.transpose()<<"\n";
         // std::cout << currentTau.transpose() << "and\t"<< arm.tau.transpose()<< "\n";
         // std::cout << currentTau.transpose() << "taucmd:\n"<< arm.tau.transpose()<< "\n";
-        std::cout << arm.q.transpose()<<"\n" << currentQ.transpose() << "difference:"<< (arm.q-currentQ).transpose() <<"\n";
+        // std::cout << arm.q.transpose()<<"\n" << currentQ.transpose() << "difference:"<< (arm.q-currentQ).transpose() <<"\n";
         
         arm.setArmCmd(arm.q, arm.qd, arm.tau);
         arm.setGripperCmd(arm.gripperQ, arm.gripperW, arm.gripperTau);
